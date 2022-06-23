@@ -1,0 +1,852 @@
+---
+title: "Analiza wydajności pracowników, oraz nakładów pracy na poszczególne kategorie zadań w Firmie X na przestrzeni lat 2019-2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Autor: Marcin Klimczak
+
+# Wprowadzenie
+
+W korporacjach, często można spotkać się z praktyką polegającą na tym, że zadania wykonywane przez pracowników, są po prostu emailami.
+
+Zadanie w rozumieniu korporacyjnym często jest więc zwykłym emailem, zawierającym opis tego, jaki jest problem, który należy rozwiązać.
+
+Dla każdego z tak rozumianych zadań, informacje o przeszłych, już rozwiązanych zadaniach przechoywywane są przez system.
+
+Z tego systemu zostały więc wyciągnięte dane, dla jednego zespołu, na przestrzeni lat 2019-2021
+
+Niepoddany obróbce zbiór danych ma dużo niepotrzebnych zmiennych, i tylko kilka tych interesujących i ważnych. Są to:
+
+* Owner - członek zespołu rozwiązujący zadanie,
+
+* Customer - osoba zlecająca zadanie,
+
+* Category - kategoria do której należy dane zadanie,
+
+* Created on - Data utworzenia zadania
+
+* Resolved on - Data oznaczenia zadania jako zakończone/wykonane.
+
+* RT - resolution time, obliczone jako różnica dat utworzenia i rozwiązania zadania, licząc dzień jako dzień roboczy, czyli jako 8h. Wartości podane są w minutach. 
+
+Przykładem obliczania RT niech będzie następujący przypadek:
+
+Zadanie utworzone zostało 10.10.2020r. o godzinie 15:00, i zostało rozwiązane 11.10.2020r. o godzinie 9:00. W związku z tym czas rozwiązania zadania(wartość RT) wynosi 2h czyli 120(minut).
+
+Dane prezentują się następująco:
+
+
+```{r, echo=FALSE}
+options(width = 100)
+alldata<-read.csv("AllData.csv")
+data<-alldata[c(3,5:7,11,16)]
+
+## renaming the data 
+names(data)<- c("Customer", "Owner", "Category", "Created", "Resolved", "RT")
+
+head(data)
+
+ggplot(data, aes(x=Customer,y=RT))+geom_boxplot()+ylim()
+            ggplot(data, aes(y=Customer))+geom_boxplot()
+            ggplot(data, aes(x=RT,y=Created, fill=Category))+geom_boxplot()
+```
+
+
+Tematem analizy, jest wybranie najefektywniejszych i najlepszych pracowników, oraz kateorii zajmujących największy nakład pracy. 
+
+W związku z tym, powyższy zbiór danych zawierający 21 795 obserwacji 6 zmiennych opisujących zadanie przekształcono na 2 zbiory - dane zgrupowane wg kategorii oraz wg członków zespołu.
+
+
+Dla 20 najliczniejszych pod względem całkowitej liczby zadań kategorii, zagregowane dane posiadają następujące zmienne:
+
+* Category - nazwa kategorii,
+
+* mean - średni czas rozwiązywania zadań w danej kategorii,
+
+* count - całkowita ilość zadań w danej kategorii,
+
+* requestors - liczba unikalnych zgłaszających zadania w danej kategorii,
+
+* workers - liczba unikalnych członków zespołu, rozwiązujących zadania w danej kategorii.
+
+Dane prezentują się następująco i będą oznaczane Categories w dalszej części projektu:
+
+```{r, message=FALSE,echo=FALSE}
+library(dplyr)
+```
+
+```{r,echo=FALSE}
+
+categories<-group_by(data, Category) %>%
+  summarise(mean = mean(RT) , count = length(RT), workers=length(unique(Owner)),
+            requestors = length(unique(Customer)))
+
+categories<-arrange(categories, desc(count))
+categories<-categories %>%  slice(1:20)
+head(categories)
+```
+
+Dla członków zespołu, zagregowane dane posiadają następujące zmienne:
+
+* Owner - członek zepsołu,
+
+* mean - średni czas rozwiązywania zadań przez danego członka zespołu,
+
+* count - całkowita ilość zadań rozwiązana przez danego członka zespołu,
+
+* experience - doświadczenie liczone w miesiącach,
+
+* categories - licza unikalnych kategorii, w których członek zespołu rozwiązał conajmniej jedno zadanie
+
+Dane prezentują się następująco i będą oznaczane Owners w dalszej części projektu:
+
+
+```{r,echo=FALSE}
+owners<-group_by(data, Owner) %>%
+  summarise(mean = mean(RT) , count = length(RT), categories=length(unique(Category)),
+            experience = as.numeric(last(sort(unique(as.Date(Created, "%d.%m.%Y")))) - 
+                                      first(sort(unique(as.Date(Created, "%d.%m.%Y"))))))
+owners$experience<- round(owners$experience/30)
+head(owners)
+```
+
+Z tak przygotowanymi 2 zbiorami zagregowanych danych, można przejść do dalszej analizy.
+
+# Wstępna analiza
+
+Aby stosować metody porządkowania liniowego jak i grupowania, dane muszą spełniać określone kryteria. Ponadto, wstępna analiza w tym przypadku jest kluczowa, ze względu na to, że po niej, jesteśmy w miarę w stanie spodziewać się jakie wyniki uzywkamy. 
+
+Poniżej przedstawiono statystyki opisowe dla każdej zmiennej z obu zbiorów danych:
+
+```{r,message=FALSE, echo=FALSE}
+library(pastecs)
+```
+```{r,echo=FALSE}
+options(width = 100)
+Owners_stats<-as.data.frame(round(stat.desc(owners[c(2:5)]),2))
+Categories_stats<-as.data.frame(round(stat.desc(categories[c(2:5)]),2))
+Owners_stats
+Categories_stats
+```
+
+Na podstawie powyższych tabel można stwierdzić, że wszystkie zmienne mają w miarę wysokie (>10%) współczynniki zmienności.
+
+Na poniższych wykresach, można zobaczyć jak prezentują się histogramy, korelacje, i rozrzuty zmiennych zawartych w każdym ze zbiorów.
+
+```{r,fig.align='center',echo=FALSE}
+library(psych)
+pairs.panels(categories[c(2:5)],
+             method = "pearson",
+             hist.col = "#00AFBB",
+             density = T,
+             lm=T)
+pairs.panels(owners[c(2:5)],
+             method = "pearson",
+             hist.col = "#00AFBB",
+             density = T,
+             lm=T)
+```
+
+Ponieważ korelacja liniowa między zmiennymi jest nie duża, można więc przystąpić do porządkówania liniowego.
+
+Przed tym procesem jednak, na podstawie porównania poniższych wykresów z wartoścami zawartymi w tabelach powyżej, można zobaczyć jak na tle grupy i indywidualnie wypadają dane kategorie czy członkowie zespołu.
+
+```{r, message=FALSE,echo=FALSE}
+library(ggplot2)
+library(stringi)
+```
+
+```{r, warning=FALSE, fig.align='center',echo=FALSE}
+
+##  time per owner
+ggplot(data)+
+  aes(x= Owner, y=RT) + geom_boxplot(outlier.shape = NA) +ylim(1,500)+
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),plot.title = element_text(hjust = 0.5))+
+  ggtitle("Wykres czasu rozwiązywania zadań względem pracowników")
+##  time per category
+ggplot(data)+
+  aes(x= Category, y=RT) + geom_boxplot(outlier.shape = NA) +ylim(1,2000)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),plot.title = element_text(hjust = 0.5))+
+  ggtitle("Wykres czasu rozwiązywania zadań względem kategorii")
+
+
+## barplots with counts
+
+## owners by exp in months and categories 
+ggplot(owners, aes(x=Owner, y=experience, fill = categories))+
+  geom_bar(stat = "identity", position="dodge")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),plot.title = element_text(hjust = 0.5))+
+  ggtitle("Członkowie zespołu względem kategorii i doswiadczenia")
+
+## categories by workers and requestors 
+ggplot(categories, aes(x=Category, y=workers, fill = requestors), plot.title = element_text(hjust = 0.5))+
+  geom_bar(stat = "identity", position="dodge")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), plot.title = element_text(hjust = 0.5))+
+  ggtitle("Kategorie względem osób zlecających i pracowników")
+
+## categories by total cases all time
+ggplot(categories, aes(x=Category, y=count))+
+  geom_bar(stat = "identity", position="dodge")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), plot.title = element_text(hjust = 0.5))+
+  ggtitle("Kategorie względem zadań")
+
+## owners by total cases all time
+ggplot(owners, aes(x=Owner, y=count))+
+  geom_bar(stat = "identity", position="dodge")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), plot.title = element_text(hjust = 0.5))+
+  ggtitle("Członkowie zespołu względem zadań")
+```
+
+Z analizy samych wykresów wynika, że biorąc pod uwagę ilość zadań wygrywa kategoria Purchased Materials, a z pracowników Maciek. W przypadku kategorii zarówno jak i Purchased materials, kategoria Bank validations rówznież zdecydowanie wybija się na tle innych dzięki największej ilości unikalnych osób zgłaszających zadania. Mozna więc wysunąć wniosek, że przy tak licznej przewadze w dwóch zmiennych, to właśnie jedna, lub obie kategorie znajdą się w czołówce rankingu.
+
+Wartą wspomnienia rzeczą, jest też to, że wykresy RT dla kategorii są bardzo rozbiezne. Podczas gdy większość kategorii oscyluje wokoło zera, inne są bardzo rozciągnięte.
+
+
+
+
+# Porządkowanie liniowe
+
+Przedstawione zostaną dwie metody porządkowania liniowego:
+
+* metoda Hellwiga
+
+* metoda TOPSIS
+
+Pierwszym krokiem jest przekształcenie zmiennych na stymulanty:
+
+* W przypadku zbioru danych Owners - jedynie zmienna mean jest destymulantą, ponieważ im mniejszy średni czas wykonania zadania, tym lepiej.
+
+* W przypadku zbioru danych Categories - jedynie zmienna workers jest destymulatną. W tym wypadku przeprowadzane badanie ma dać odpowiedź, która z kategorii wymaga największego nakładu pracy. Zatem im mniej pracowników w danej kategorii, tym gorzej.
+
+W przypadku pozostałych zmiennych dla obu zbiorów danch, są one wszystkie stymulantami (im więcej tym lepiej)
+
+Następnym krokiem jest standaryzacja zmiannych. W tabeli poniżej można zobaczyć jak prezentują się dane po przeształceniach:
+
+```{r,echo=FALSE}
+owners$mean<- (-1)*owners$mean
+
+## categories
+categories$workers <- (-1)*categories$workers
+
+## standardization
+owners[c(2:5)]<- scale(owners[c(2:5)])
+categories[c(2:5)]<- scale(categories[c(2:5)])
+
+head(owners)
+head(categories)
+
+```
+
+
+## Metoda Helwiga
+
+Zarówno dla zbioru Owners, jak i zbioru Categories, po standaryzacji wyznaczany jest wzór - jako najlepsze wartości każdej ze zmiennych, wzorami w przypadku Owners i Categories są:
+
+```{r,echo=FALSE}
+role_model_category<- categories %>% summarise_if(is.numeric, max)
+role_model_owner<- owners %>% summarise_if(is.numeric, max)
+role_model_category
+role_model_owner
+```
+
+Następnie liczone są odległości każdej ze zmiennych od wzorca, wyznaczana jest tzw. odległość maksymalna, a następnie na jej podstawie obliczna są wartości rankingu.
+
+```{r,echo=FALSE}
+owners$dist<-rowSums((owners[c(2:5)]-role_model_owner %>% slice(rep(1:n(), length(owners$Owner))))^2)
+categories$dist<-rowSums((categories[c(2:5)]-role_model_category %>% slice(rep(1:n(), length(categories$Category))))^2)
+
+## calculating max distance
+max_dist_cat<-mean(categories$dist)+2*sd(categories$dist)
+max_dist_owner<-mean(owners$dist)+2*sd(owners$dist)
+
+## making ranking 
+owners$val <- 1-owners$dist/max_dist_owner
+categories$val <- 1-categories$dist/max_dist_cat
+
+owners<-arrange(owners, desc(val)) 
+categories<-arrange(categories, desc(val))
+owners
+categories
+
+```
+
+Ponieważ powyższe tabele zostały posortowane względem wartości zmiennej odpowiedzialnej za ranking, można zobaczyć, że najlepszym pracownikiem jest:
+
+* Kamila,
+
+A kategorią najbardziej wymagającą jest:
+
+* Bank Validation
+
+
+Na samym końcu zotało wykonane grupowanie kategorii i członków zespołu na 4 grupy, od najlepszej do najgorszej:
+```{r,echo=FALSE}
+m=mean(owners$val)
+s=sd(owners$val)
+
+## calc interval breaks
+lower = m-s
+mid = m
+upper = m+s
+owners$group<- rep(0,length((owners$Owner)))
+for(i in  1:length(owners$Owner)){
+  if(owners$val[i]<lower)
+    owners$group[i] <- 4
+  else if(owners$val[i]<mid)
+    owners$group[i] <- 3
+  else if(owners$val[i]<upper)
+    owners$group[i] <- 2
+  else
+    owners$group[i] <- 1
+}
+owners_HELLWIG<-owners
+write.csv(owners_HELLWIG, "Owners rank.csv")
+
+
+## grouping
+##calc mean and sd
+m=mean(categories$val)
+s=sd(categories$val)
+
+## calc interval breaks
+lower = m-s
+mid = m
+upper = m+s
+categories$group<- rep(0,length((categories$Category)))
+for(i in  1:length(categories$Category)){
+  if(categories$val[i]<lower)
+    categories$group[i] <- 4
+  else if(categories$val[i]<mid)
+    categories$group[i] <- 3
+  else if(categories$val[i]<upper)
+    categories$group[i] <- 2
+  else
+    categories$group[i] <- 1
+}
+
+categories_HELWIG<-categories
+write.csv(categories_HELWIG,"Categories rank.csv")
+```
+
+Pogrupowane dane mają następującą postać:
+
+```{r,echo=FALSE}
+categories_HELWIG
+owners_HELLWIG
+```
+
+Można więc powiedzieć, że według rankingu utworzonego metodą Helwiga, najlepszymi pracownikami są:
+
+* Kamila i Maciek,
+
+A najbardziej wymagającymi w sensie nadładu pracy kategoriami, są:
+
+* Bank Validation oraz Purchased Materials.
+
+Warto także wspomnieć, że najmniej efektywnym pracownikiem okazał się Karol, a kategorie które wymagają najmniejszych nakładów pracy to: Sales price Master Data, oraz Datasheets. Jednak poniewaz nie wszystkie kategorie zostały wzięte pod uwage w analizie, stwierdzenie, że kategorie te są najmniej wymagające wymagałoby dodatkowej analizy ze wszystkimi 46 kategoriami.
+
+
+## Metoda TOPSIS
+
+Początkowe kroki tej metody, są podobne do metody Helwiga, jednak różnica pojawia się w momencie wyznaczania odległości od wzorca. W metodzie TOPSIS wyznaczany bowiem jest także antywzorzec, a odległość całkowita, na podstawie któej powstaje ranking, uwzględnia zarówno odległośc od wzorca, jak i odległość od antywzorca.
+
+Poniżej można zobaczyć już pogrupowane wyniki:
+
+```{r,echo=FALSE}
+categories<-categories[c(1:5)]
+owners<-owners[c(1:5)]
+
+## calculating role model
+role_model_category<- categories %>% summarise_if(is.numeric, max)
+role_model_owner<- owners %>% summarise_if(is.numeric, max)
+
+## calculating anti model
+anti_model_category<- categories %>% summarise_if(is.numeric, min)
+anti_model_owner<- owners %>% summarise_if(is.numeric, min)
+
+## distances
+owners$dist1<-rowSums((owners[c(2:5)]-role_model_owner %>% slice(rep(1:n(), length(owners$Owner))))^2)
+categories$dist1<-rowSums((categories[c(2:5)]-role_model_category %>% slice(rep(1:n(), length(categories$Category))))^2)
+
+owners$dist2<-rowSums((owners[c(2:5)]-anti_model_owner %>% slice(rep(1:n(), length(owners$Owner))))^2)
+categories$dist2<-rowSums((categories[c(2:5)]-anti_model_category %>% slice(rep(1:n(), length(categories$Category))))^2)
+
+## calculating rank value
+owners$val<- owners$dist2/(owners$dist2+owners$dist1)
+categories$val<- categories$dist2/(categories$dist2+categories$dist1)
+
+## sorting by best rank value
+owners<-arrange(owners, desc(val)) 
+categories<-arrange(categories, desc(val))
+
+## grouping
+##calc mean and sd
+m=mean(owners$val)
+s=sd(owners$val)
+
+## calc interval breaks
+lower = m-s
+mid = m
+upper = m+s
+owners$group<- rep(0,length((owners$Owner)))
+for(i in  1:length(owners$Owner)){
+  if(owners$val[i]<lower)
+    owners$group[i] <- 4
+  else if(owners$val[i]<mid)
+    owners$group[i] <- 3
+  else if(owners$val[i]<upper)
+    owners$group[i] <- 2
+  else
+    owners$group[i] <- 1
+}
+owners_TOPSIS<-owners
+
+## grouping
+##calc mean and sd
+m=mean(categories$val)
+s=sd(categories$val)
+
+## calc interval breaks
+lower = m-s
+mid = m
+upper = m+s
+categories$group<- rep(0,length((categories$Category)))
+for(i in  1:length(categories$Category)){
+  if(categories$val[i]<lower)
+    categories$group[i] <- 4
+  else if(categories$val[i]<mid)
+    categories$group[i] <- 3
+  else if(categories$val[i]<upper)
+    categories$group[i] <- 2
+  else
+    categories$group[i] <- 1
+}
+categories_TOPSIS<-categories
+owners_TOPSIS
+categories_TOPSIS
+```
+
+W przypadku Metody TOPSIS, czołówki oraz końcówki nie uległy zmianie. 
+
+Zamiany wewnątrz rankingu są maksymalnie jednomiejscowe, a osoby czy kategorie nie zmieniły się między przydzielonymi 4 grupami.
+
+Można zatem powiedzieć, że metoda TOPSIS potwierdza zarówno najlepsze i najgorsze wyniki w rankingku osiągnięte metodą Helwiga.
+
+
+```{r,echo=FALSE}
+owners<-group_by(data, Owner) %>%
+  summarise(mean = mean(RT) , count = length(RT), categories=length(unique(Category)),
+            experience = as.numeric(last(sort(unique(as.Date(Created, "%d.%m.%Y")))) - 
+                                      first(sort(unique(as.Date(Created, "%d.%m.%Y"))))))
+owners$experience<- round(owners$experience/30) ##months! not days
+owners$mean<-(-1)*owners$mean
+owners[c(2:5)]<- scale(owners[c(2:5)])
+owners$experience<-owners$count/owners$experience
+## calculating role model
+role_model_owner<- owners %>% summarise_if(is.numeric, max)
+
+## calculating anti model
+anti_model_owner<- owners %>% summarise_if(is.numeric, min)
+
+## distances
+owners$dist1<-rowSums((owners[c(2:5)]-role_model_owner %>% slice(rep(1:n(), length(owners$Owner))))^2)
+
+owners$dist2<-rowSums((owners[c(2:5)]-anti_model_owner %>% slice(rep(1:n(), length(owners$Owner))))^2)
+
+## calculating rank value
+owners$val<- owners$dist2/(owners$dist2+owners$dist1)
+
+## sorting by best rank value
+owners<-arrange(owners, desc(val)) 
+
+## grouping
+##calc mean and sd
+m=mean(owners$val)
+s=sd(owners$val)
+
+## calc interval breaks
+lower = m-s
+mid = m
+upper = m+s
+owners$group<- rep(0,length((owners$Owner)))
+for(i in  1:length(owners$Owner)){
+  if(owners$val[i]<lower)
+    owners$group[i] <- 4
+  else if(owners$val[i]<mid)
+    owners$group[i] <- 3
+  else if(owners$val[i]<upper)
+    owners$group[i] <- 2
+  else
+    owners$group[i] <- 1
+}
+ownersCORRECT_TOPSIS<-owners
+```
+
+# Grupowanie klasyczne i hierarchiczne
+
+Po wykonanym porządkowaniu liniowym, następnym elementem projektu będzie sprawdzenie jak bardzo podobne czy różne od siebie są kategorie, a także gdzie i jak doszukiwać się podobieństw i różnic między członkami zespołu.
+
+# Metoda k-średnich
+
+Grupowanie metodą k-średnich opiera się na tzw. odległościach. Te ogległości liczone są dla każdego porównywanego obiektu (w przypadku tego projektu obiektami są kategorie oraz członkowie zespołu) i dla każdej zmiennej osobno. Tj jeśli dwie kategorie mają podobną wartość jednej zmiennej, dystans między nimi będzie mały, a obiekty będą uważane za podobne.
+
+Przy grupowaniu jednak, brane jest pod uwagę więcej zmiennych, a na podstawie odległości między nimi, można obiekty podzielic na grupy.
+
+W przypadku metody k-średnich, punkty środki skupień dla grup, są zawsze obliczane jako średnie dla poszczególnych zmiennych obiektów.
+
+Poniżej można zobaczyć, jak względem zmiennych count i mean podobni są do siebie zarówno członkowie zespołu, jak i kategorie. Przed tym jednak, nalezy wybrac odpowiednią ilość skupień, czyli grup, na które dzielone będą dane. W tym celu, można sprawdzić, o ile średnio spada wewnątrzgrupowa wariancja zmiennych. Na poniższym wykresie przedstawiono wyskres średniej wartości wariancji wewnątrzgrupowej w zależności od ilości grup na które dzielona jest próbka.
+
+```{r, message=FALSE, echo=FALSE}
+library(dplyr)
+```
+```{r,echo=FALSE, warning=FALSE}
+##reload data
+owners<-group_by(data, Owner) %>%
+  summarise(mean = mean(RT) , count = length(RT))
+ownersCLUST<- scale(owners[c(2:3)])
+row.names(ownersCLUST)<-owners$Owner
+
+categories<-group_by(data, Category) %>%
+  summarise(mean = mean(RT) , count = length(RT)) %>%
+  arrange(desc(count)) %>%
+  slice(1:20)
+categoriesCLUST<- scale(categories[c(2:3)])
+row.names(categoriesCLUST)<-categories$Category
+
+```
+
+```{r, message=FALSE, echo=FALSE}
+library(factoextra)
+library(stats)
+library(multipanelfigure)
+```
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+
+
+q1<-fviz_nbclust(ownersCLUST, kmeans, nstart=100, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 1) + ggtitle("Członkowie zespołu")
+q2<-fviz_nbclust(categoriesCLUST, kmeans, nstart=100, method = "wss") +
+  geom_vline(xintercept = 4, linetype = 1)+ ggtitle("Kategorie")
+
+figure1 <- multi_panel_figure(columns = 2, rows = 1, panel_label_type = "none")
+
+figure1 %<>%
+  fill_panel(q1, column = 1, row = 1) %<>%
+  fill_panel(q2, column = 2, row = 1) 
+figure1
+
+```
+
+Według danych z powyższych wykresów, chcąc grupować członków zespołu i kategorie, powinno podzielić się członków zespołu na 3 grupy, a kategorie na 4 grupy.
+
+Poniżej mozna zobaczyć wykresy prezentujące takie podziały.
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+clus<-kmeans(ownersCLUST,3, nstart=20)
+clust<-as.data.frame(clus$cluster)
+grouped<-cbind(owners, clus$cluster)
+
+plotKO<-fviz_cluster(clus, data=ownersCLUST, geom=c("text","point"), repel=TRUE, main="Członkowie zespołu")
+
+
+clus<-kmeans(categoriesCLUST,4, nstart=20)
+clust<-as.data.frame(clus$cluster)
+grouped<-cbind(categories, clus$cluster)
+
+plotKC<-fviz_cluster(clus, data=categoriesCLUST, geom=c("text","point"), repel=TRUE, main="Kategorie")
+
+plotKO
+plotKC
+
+```
+
+Z powyższych wykresów wynika, że grupując członków zespołu ze względu na średni czas rozwiązywania zadań oraz ogólną liczbę rozwiązanych zadań, najlepszą grupą pracowników jest grupa czerwona. Najgorszą zaś, grupa niebieska - Karol.
+
+Grupując kategorie ze względu na ilość oraz czas rozwiązywanych zadań z kolei, nie da się jednonacznie stwierdzić, któRa z grup wymaga największego nakładu pracy. Mozna jedynie insynuować, że grupa zielona, jest grupą w miarę bezpieczną.
+
+Jest w niej także bank validation, czyli wg rankingów najbardziej wymagająca nakładu pracy kategoria. Obrazuje to doskonale, że grupowanie zosrtało wykonane tylko ze względu na 2 zmienne. Cały proces powtórzono poniżej, dla pozostałych zmiennych:
+
+* Dla członków zespołu - experience oraz categories,
+
+* Dla kategorii - requestors oraz workers.
+
+
+```{r, message=FALSE, echo=FALSE}
+library(dplyr)
+```
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+##reload data
+owners<-group_by(data, Owner) %>%
+  summarise(categories=length(unique(Category)),
+            experience = as.numeric(last(sort(unique(as.Date(Created, "%d.%m.%Y")))) - first(sort(unique(as.Date(Created, "%d.%m.%Y"))))))
+owners$experience<- round(owners$experience/30)
+ownersCLUST<- scale(owners[c(2:3)])
+row.names(ownersCLUST)<-owners$Owner
+
+categories<-group_by(data, Category) %>%
+  summarise(mean = mean(RT) , count = length(RT), workers=length(unique(Owner)),
+            requestors = length(unique(Customer)))
+
+categories<-arrange(categories, desc(count))
+categories<-categories %>%  slice(1:20)
+
+categoriesCLUST<- scale(categories[c(4:5)])
+row.names(categoriesCLUST)<-categories$Category
+
+
+```
+
+```{r, message=FALSE, echo=FALSE}
+library(factoextra)
+library(stats)
+library(multipanelfigure)
+```
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+
+
+q1<-fviz_nbclust(ownersCLUST, kmeans, nstart=100, method = "wss") +
+  geom_vline(xintercept = 4, linetype = 1) + ggtitle("Członkowie zespołu")
+q2<-fviz_nbclust(categoriesCLUST, kmeans, nstart=100, method = "wss") +
+  geom_vline(xintercept = 5, linetype = 1)+ ggtitle("Kategorie")
+
+figure1 <- multi_panel_figure(columns = 2, rows = 1, panel_label_type = "none")
+
+figure1 %<>%
+  fill_panel(q1, column = 1, row = 1) %<>%
+  fill_panel(q2, column = 2, row = 1) 
+figure1
+
+```
+
+Tym razem, grupowania zostną wykonane na odpowiednio 4 i 5 grup.
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+clus<-kmeans(ownersCLUST,4, nstart=20)
+clust<-as.data.frame(clus$cluster)
+grouped<-cbind(owners, clus$cluster)
+
+fviz_cluster(clus, data=ownersCLUST, geom=c("text","point"), repel=TRUE, main="Członkowie zespołu")
+
+
+clus<-kmeans(categoriesCLUST,5, nstart=20)
+clust<-as.data.frame(clus$cluster)
+grouped<-cbind(categories, clus$cluster)
+
+fviz_cluster(clus, data=categoriesCLUST, geom=c("text","point"), repel=TRUE, main="Kategorie")
+
+```
+
+Na podstawie powyższych wykresów, można stwierdzić, że nie ma jednoznacznie wybijających się czy podobnych do siebie zmiennych względem wszystkich zmiennych, zarówno dla członków zespołu, jak i dla kategorii. Aby sprawdzić jak kategorie czy członkowie zespołu są sobie podobni ze względu na wszystkie zmienne będzie trzeba wykorzystać skalowanie wielowymiarowe.
+
+# Metoda PAM
+
+W przypadku metody PAM, środkiem danej grupy nie jest już średnia, a zawsze realna wartość któregoś z obiektów wybranego na środek grupy.
+
+Dla metody PAM wykonano jedynie grupowanie względem zmiennych count oraz mean, w celu porównania jakości grupowania z metodą k-średnich.
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+categories<-group_by(data, Category) %>%
+  summarise(mean = mean(RT) , count = length(RT), workers=length(unique(Owner)),
+            requestors = length(unique(Customer)))
+
+categories<-arrange(categories, desc(count))
+categories<-categories %>%  slice(1:20)
+owners<-group_by(data, Owner) %>%
+  summarise(mean = mean(RT) , count = length(RT), categories=length(unique(Category)),
+            experience = as.numeric(last(sort(unique(as.Date(Created, "%d.%m.%Y")))) - 
+                                      first(sort(unique(as.Date(Created, "%d.%m.%Y"))))))
+owners$experience<- round(owners$experience/30)
+
+categoriesCLUST<- scale(categories[c(2:3)])
+row.names(categoriesCLUST)<-categories$Category
+ownersCLUST<- scale(owners[c(2:3)])
+row.names(ownersCLUST)<-owners$Owner
+
+library(cluster)
+q1<-fviz_nbclust(ownersCLUST, pam, nstart=100, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 1) + ggtitle("Członkowie zespołu")
+q2<-fviz_nbclust(categoriesCLUST, pam, nstart=100, method = "wss") +
+  geom_vline(xintercept = 4, linetype = 1)+ ggtitle("Kategorie")
+
+figure1 <- multi_panel_figure(columns = 2, rows = 1, panel_label_type = "none")
+
+figure1 %<>%
+  fill_panel(q1, column = 1, row = 1) %<>%
+  fill_panel(q2, column = 2, row = 1) 
+figure1
+
+library(cluster)
+pam.res <- pam(ownersCLUST, 3)
+# Visualize pam clustering
+plotPO<-fviz_cluster(pam.res, geom = c("point","text"),repel=TRUE)
+
+pam.res <- pam(categoriesCLUST, 4)
+# Visualize pam clustering
+plotPC<-fviz_cluster(pam.res, geom = c("point","text"),repel=TRUE)
+
+plotPO
+plotPC
+```
+
+Ostatecznie wykresy nie różnią się w ogóle, zarówno dobrana ilość grup jest taka sama jak i podział na nie. Poniżej mozna zobaczyć dokładne porównanie:
+
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+figure1 <- multi_panel_figure(columns = 2, rows = 1, panel_label_type = "none")
+
+figure1 %<>%
+  fill_panel(plotKO+ggtitle("Owners k-means"), column = 1, row = 1) %<>%
+  fill_panel(plotPO+ggtitle("Owners PAM"), column = 2, row = 1) 
+figure1
+
+figure2 <- multi_panel_figure(columns = 2, rows = 1, panel_label_type = "none")
+
+figure2 %<>%
+  fill_panel(plotKC+ggtitle("Categories k-means"), column = 1, row = 1) %<>%
+  fill_panel(plotPC+ggtitle("Categories PAM"), column = 2, row = 1) 
+figure2
+```
+
+
+# Grupowanie Hierarchiczne
+
+Jest to metoda aglomeracyjna, któRa wykorzystując odległość wspomnianą wcześniej, zbiera elementy w zoraz większe grupy. Wadą tej metody jest to, że wzajemnie izolowane i niepowiązane ze sobą grupy, mogą być zawarte w jednej większej.
+
+Poniżej zostało wykonane grupowanie hierarchiczne używając dystansu euklidowskiego, medotą k-średnich.
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+owners<-group_by(data, Owner) %>%
+  summarise(mean = mean(RT) , count = length(RT), categories=length(unique(Category)),
+            experience = as.numeric(last(sort(unique(as.Date(Created, "%d.%m.%Y")))) - 
+                                      first(sort(unique(as.Date(Created, "%d.%m.%Y"))))))
+owners[c(2:5)]<- scale(owners[c(2:5)])
+ownersHCLUST<-owners[c(2:3)]
+rownames(ownersHCLUST)<- owners$Owner 
+
+distance_e<-dist(ownersHCLUST)
+plot(hclust(distance_e, "single"),main = "Grupowanie hierarchizcne odległość euklidesowa", xlab = "",sub="")
+
+distance_e<-dist(ownersHCLUST,"maximum")
+plot(hclust(distance_e, "single"), main = "Grupowanie hierarchizcne odległość maksymalna", xlab = "",sub="")
+
+
+```
+
+Na powyższym dendrogramie można zobaczyć podobni są do siebie poszczególni pracownicy ze względu na zmienne count oraz mean. Otrzymane wyniki drastycznie różnią się od poprzednich grupowań. Z samego diagramu nie widać także informacji która grupa jest najlepsza, jednak na podstawie poprzednich grupowań, można stwierdzić, że są to Maciek i Aleksandra.
+
+Z tego punktu, można więc idąc w góre dendrogramu dołączać do najlepszej pary następne grupy, i odczytać jak bardzo są podobne. Na przykłąd drugą najlepszą parą okazali się Filip i Kamila, a najbardziej rózniącym się członkiem zespołu jest Karol.
+
+Warto też dodać że zamiana odległości na odległość maksymalną jedynie w małym stopniu zmieniła posiom skupień poszczególnych grup, lecz nie wpłynęła na zmianę ich składu
+
+
+# Skalowanie wielowymiarowe
+
+Poprzednie grupowania, zostały wykonane względem dwóch zmiennych, tak że wyniki można było przedstawic na wykresie. 
+
+Teraz chcąc uwzględnić więcej zmiennych na raz, należy sięgnąć do technik skalowania wielowymiarowego. Zostaną przedstawione dwie techniki: Klasyczne skalowanie wielowymiarowe oraz Mapowanie Sammona.
+
+Obie z metod korzystają z odległości euklidesowych, jednak Skalowanie Sammona znacznie lepiej obrazuje małe odległości. Spodziewana jest zatem rozbieżność uzyskanych wyników.
+
+Wszystkie techniki skalowania wielowymiarowego opierają się na dystansach. Jednak dzięki temu skalowaniu, odległości 4 wymiarowe (między 4 zmienymi) zostały przeskalowane tak, aby można było zobaczyć je w przestrzeni wielowymiarowej.
+
+Dla tak przeskalowanych wyników zastosowano metodę grupowania k-średnich. Podziały można zobaczyć poniżej:
+
+```{r, message=FALSE}
+library(MASS)
+```
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center'}
+x<-owners[c(2:5)]
+x<-scale(x)
+row.names(x)<- owners$Owner
+owners_dist<- dist(x)
+owners_dist<-sammon(owners_dist, k=2)
+k <- kmeans(owners_dist$points, centers = 4)
+fviz_cluster(k, data=owners_dist$points, geom=c("text","point"), repel=TRUE, main="Sammon Mapping for Owners", xlab="", ylab="")
+
+x<-owners[c(2:5)]
+x<-scale(x)
+row.names(x)<- owners$Owner
+owners_dist<- dist(x)
+owners_dist<-cmdscale(owners_dist, k=2)
+k <- kmeans(owners_dist, centers = 4)
+fviz_cluster(k, data=owners_dist, geom=c("text","point"), repel=TRUE, xlab="", ylab="", main="Classical MDS for Owners")
+
+categories<-group_by(data, Category) %>%
+  summarise(mean = mean(RT) , count = length(RT), workers=length(unique(Owner)),
+            requestors = length(unique(Customer)))
+
+categories<-arrange(categories, desc(count))
+categories<-categories %>%  slice(1:20)
+
+y<-categories[c(2:5)]
+y<-scale(y)
+row.names(y)<- categories$Category
+cat_dist<- dist(y)
+cat_dist<-sammon(cat_dist, k=2)
+k <- kmeans(cat_dist$points, centers = 4)
+fviz_cluster(k, data=cat_dist$points, geom=c("text","point"), repel=TRUE, main="Sammon Mapping for Categories", xlab="", ylab="")
+
+y<-categories[c(2:5)]
+y<-scale(y)
+row.names(y)<- categories$Category
+cat_dist<- dist(y)
+cat_dist<-cmdscale(cat_dist, k=2)
+k <- kmeans(cat_dist, centers = 4)
+fviz_cluster(k, data=cat_dist, geom=c("text","point"), repel=TRUE, xlab="", ylab="", main="Classical MDS for Categories")
+
+```
+
+Na powyższych wykresach widać, że wyniki grupowań rzeczywiście się różnią. Na ich podstawie można zobaczyć jak względem wszystkich zmiennych obiekty są do siebie podobne. Na przykładzie członków zespołu, główną różnicą jest to, że przy użyciu skalowania Sammona więcej osób zostało sklasyfikowanych jako najlepsza grupa. Z kolei w przypadku klasycznego skalowania, największą grupą jest grupa słabsza.
+
+
+# Podsumowanie
+
+Biorąc pod uwagę uzyskane wyniki, zarówno z rankingów jak i metod grupowania i skalowania. Można jednoznacznie stwierdzić, że najlepszymi pracownikami są Kamila i Maciek.
+
+Kategorie, które okazały się najbardziej wymagające nakładu pracy to Bank Validation i Purchased Materials. Tak jak w przypadków członków zespołu, wszystkie metody poza metodą Sammona są zgodne i popierają to wnioskowanie.
+
+Można zatem przyjąć, że największa pomoc przydałaby się w zadaniach związanych z kategoriami Bank Validation oraz Purchased Materials, a największa pochwała nalezy się Kamili i Maćkowi.
+
+Z pracowników zdecydowanie najgorzej na każdym rankingu wypadł Karol. 
+Zaraz po nim są Madga, Jola i Jacek. Należy jednak pamiętać, że ranking jest subiektywny i znaczną przewagę mają osoby pracujące w danym zespole od dawna. Nie jest to jednak kluczowy czynnik, bo Marysia mogąca pochwalić się takim stażem jak Kamila, jest już daleko za nią w rankingu.
+
+```{r}
+dane<-read.csv("BVACT.csv", header = F)
+dane<-dane[c(1,2,3)]
+head(dane)
+dane[1,1]<-"23.08.2021"
+library(lubridate)
+library(dplyr)
+
+dane$V1<-as.Date(na.omit(dane$V1), format="%d.%m.%Y")
+dane1<-dane[dane$V3=="Phone",]
+dane2<-dane[dane$V3=="phone",]
+bb<-dane %>% group_by(V1) %>% arrange(V1) %>% mutate(suma=length(V1), suma2=length(V3[V3=="Phone"]))
+library(ggplot2)
+bb<-bb[4978:7830,]
+bb<- bb%>% summarize(actions=mean(suma), phone=mean(suma2))
+
+bb$miesiac<-month(bb$V1)
+
+cc<-bb %>% group_by(miesiac) %>% arrange(miesiac) %>% summarise(mean1=mean(actions), mean2=mean(phone))
+
+cc$miesiac<-c("Styczeń", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grzudzień", "NA")
+
+names(cc)<-c("Miesiąc", "Średnia akcji dziennie", "Średnia telefonów dziennie")
+
+ggplot(bb, aes(x=V1))+ geom_line(aes(y=actions, colour="Actions overall"))+
+  geom_line(aes(y=phone, colour="Phone actions"))+
+  ggtitle("Phone Actions taken overall")
+
+ggplot(bb, aes(x=V1))+ geom_point(aes(y=actions, colour="Actions overall"))+
+  geom_point(aes(y=phone, colour="Phone actions"))+
+  ggtitle("Phone Actions taken overall")
+
+mean(bb$actions)
+mean(bb$phone)
+
+```

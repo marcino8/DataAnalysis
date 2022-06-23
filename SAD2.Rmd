@@ -1,0 +1,789 @@
+---
+title: "SAD2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.align = 'center')
+```
+
+# Wstęp
+
+Projekt dotyczy badania rynku gier komputerowych i mobilnych, czyli tematu, który nie jest często przytaczany. Rynek ten jest jednak bardzo ważny i warty uwagi, ze względu na jego ciągłe światowe wzrosty.
+
+W tym projekcie, na podstawie danych z ankiety, związanych z rynkiem gier komputerowych, zostanie przeprowadzone badanie, jak bardzo podobne - bądź różne są preferencje kobiet i mężczyzn.
+
+Przy pomocy metod uczenia maszynowego, zostaną wykonane próby klasyfikacji osób ze względu na płeć, opierając się na wartościach pozostałych zmiennych.
+
+## Specyfikacja zbioru danych i wstępna analiza
+
+Dane zostały zebrane samodzielnie i pochodzą z ankiety, dotyczącej wydatków na gry, opublikowanej na dwóch grupach internetowych: World of Warcraft Polska oraz Dota 2 Polska. Badaną populacją są zatem uczestnicy powyższych forów internetowych. W ankiecie znajdowało się 14 pytań mających na celu zebrać cechy charakteryzujące tą populację. Próbą, którą udało się uzyskać usuwając ze zbioru braki w danych, są odpowiedzi od 127 osób, które ze względu na losową technikę wyboru osób do ankiety, można uznać za próbę reprezentatywną badanej populacji. W wynikach ankiety zebrano następujące zmienne dyskretne:
+
+*	KM – zmienna informująca o płci w grupach: Kobieta, Mężczyzna,
+
+*	WIEK – zmienna informująca o wieku w postaci przedziałów, mniej niż 18 lat,od 18-tu do 25-ciu lat, od 25-ciu do 40-tu lat oraz więcej niż 40 lat,
+
+*	EDU – zmienna informująca o ostatnim ukończonym etapie edukacji, w kategoriach: szkoła podstawowa, szkoła średnia, studia licencjackie/inżynierskie, studia magisterskie oraz studia doktoranckie,
+
+*	STPR - Informacja o osobach uczących się i pracujących w postaci rozdziału 
+na pracujących, uczących się oraz pracujących i jednocześnie uczących się,
+
+*	GRA – Informacja o gatunku gry, w który najczęściej gra badana osoba z podgrupami: MOBA, RPG, MMORPG, FPS, Battle royal oraz pozostałymi gatunkami,
+
+*	PCS – informacja o platformie, na której najczęściej grają badani w podziale na: komputer lub laptop, konsolę, oraz smartfon i tablet,
+
+Poniżej mozna zobaczyć jak wyglądają odpowiedzi na pytania, i jak ilościowo rozkładają się wartości zmiennych.
+
+
+```{r, out.width="150%", fig.width=10}
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+dane<-read.csv("dane.csv", encoding = "UTF-8")
+names(dane)<-c("KM","WIEK","SC","EDU","STPR","DOCHOD","CZAS","GRA","PCS","MAXW","KUPNO","SAM","SAMOTNI","WYDATKI")
+dane<-na.omit(dane)
+
+dane<-dane[c("KM","WIEK","EDU","STPR","DOCHOD","CZAS","GRA","PCS","WYDATKI")]
+dane$GRA[dane$GRA=="Gry AAA"]<-"Inne"
+dane$GRA[dane$GRA=="językowe"]<-"Inne"
+dane$GRA[dane$GRA=="Soulslike"]<-"Inne"
+dane$GRA[dane$GRA=="SANDBOX"]<-"Inne"
+
+
+
+q1<-ggplot(dane, aes(x=WIEK,fill=WIEK))+geom_bar()+
+  ggtitle("Wiek")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+
+q2<-ggplot(dane, aes(x=KM,fill=KM))+geom_bar()+
+  ggtitle("Płeć")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q1,q2, ncol=2, nrow=1)
+
+q3<-ggplot(dane, aes(x=EDU,fill=EDU))+geom_bar()+
+  ggtitle("Wykształcenie")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")+theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+
+
+
+q5<-ggplot(dane, aes(x=STPR,fill=STPR))+geom_bar()+
+  ggtitle("Czy badana osoba pracuje czy studiuje?")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q3,q5, ncol=2, nrow=1)
+
+q6<-ggplot(dane, aes(x=GRA,fill=GRA))+geom_bar()+
+  ggtitle("Gatunek gry")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")+theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+
+
+q7<-ggplot(dane, aes(x=PCS,fill=PCS))+geom_bar()+
+  ggtitle("Platforma używana do gry")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q6,q7, ncol=2, nrow=1)
+
+```
+Z wykresów, można odczytać, że w badanej próbie najwięcej jest osób, które 
+są mężczyznami oraz grają na komputerze bądź laptopie. Zdecydowana większość badanych jest w wieku 18 do 25 lat, ukończyła szkołę średnią, a ich ulubionym gatunkiem gier jest MMORPG. Osób pracujących w próbie jest mniej więcej tyle samo co studiujących lub uczących się, a osób, które na raz studiują i pracują jest znacznie mniej.
+
+W ramach ankiety zebrano także zmienne, które można potraktować jako ciągłe ze względu na to, że mają ponad 10 możliwych odpowiedzi, można je przedstawić na skali ilościowej oraz przedstawienie ich w postaci ułamków ma sens – na przykład średni czas spędzany tygodniowo na graniu o wartości 20,5 godziny. Są to zmienne:
+	
+* CZAS – zmienna informująca o średnim tygodniowym czasie spędzonym na graniu wyrażonym w godzinach,
+
+* DOCHOD – zmienna informująca o średnim dochodzie na osobę w gospodarstwie domowym wyrażonym w zł,
+	
+* WYDATKI – zmienna informująca o średnich rocznych wydatkach na gry wyrażonych w zł. 
+
+```{r}
+
+q7<-ggplot(dane, aes(y=CZAS))+geom_boxplot()+
+  ggtitle("CZAS")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Czas w godzinach")
+
+
+q8<-ggplot(dane, aes(y=DOCHOD))+geom_boxplot()+
+  ggtitle("DOCHÓD")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Zł")
+
+
+q9<-ggplot(dane, aes(y=WYDATKI))+geom_boxplot()+
+  ggtitle("WYDATKI")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Zł")
+
+
+ggarrange(q7,q8,q9,ncol = 3, nrow = 1)
+
+```
+
+Na podstawie powyższych wykresów, można stwierdzić, że średni tygodniowy czas spędzony na graniu w gry, zawiera się w przedziale od 0 do 100. Średnio osoby badane grają mniej więcej 20 godzin tygodniowo.
+
+Jeśli chodzi o dochód na głowę w gospodarstwie domowym, widać, że zaobserwowano tylko jeden wynik powyżej 20 000 zł, a średnio są to 3 - 4 tysiące zł.
+
+Widać także, że wydatki roczne na gry zamykają się w przedziale 0 do 5000zł, a zdecydowana większość nie wydaje na gry więcej niż 2000 zł rocznie.
+
+
+Poniżej można zobaczyć rozkłady, rozrzuty i histogramy zmienych CZAS, DOCHOD i WYDATKI.
+
+
+```{r}
+
+library(psych)
+pairs.panels(dane[c(5,6,9)],
+             method = "pearson",
+             hist.col = "#00AFBB",
+             density = T,
+             lm=T)
+
+```
+
+Na przekątnej rysunku, znajdują się histogramy zmiennych wraz z dopasowanymi funkcjami gęstości. Można na nich zobaczyć wspomniane wcześniej prawostronne skośności rozkładów zmiennych DOCHOD, CZAS i WYDATKI.
+
+Pod przekątną, znajdują się wykresy rozrzutu zmiennych, z dopasowanymi liniami regresji. Można już teraz postawić hipotezę o tym, że spłaszczenie tych rozrzutów, na przykład dodając logarytmy zmiennych ciągłych, da nam lepsze wyniki w przypadku dopasowania modelu klasyczną metodą najmniejszych kwadratów oraz własności prognostycznych. W dodatku, przy założeniu, że zmienne mają dwuwymiarowy rozkład normalny, na wykresie zaznaczono także 95% elipsy ufności, oznaczające, że obserwacje z populacji będą znajdywać się w tym obszarze z prawdopodobieństwem 95%.
+
+Nad przekątną, znajdują się współczynniki korelacji liniowej Pearsona między zmiennymi leżącymi na przecięciu rzędu i kolumny – to znaczy na przykład, że 0,23 jest współczynnikiem korelacji liniowej Pearsona dla zmiennych WYDATKI i CZAS, czyli zmienne są ze sobą słabo skorelowane. Z kolei prawie korelacji między zmiennymi DOCHOD I CZAS.
+
+
+# Przygotowanie danych do badania
+
+Przed przystąpieniem do badania, ze względun na używane w projekcie metody, należy odpowiednio przetransformować dane.
+
+Zostały wykonane trzy transformacje wyjściowego zbioru danych, w następujący sposób:
+
+* dane.liczbowe - dane, w których wartości kategoryczne zostały zamienione na liczbowe w sposób rosnący. Dla wartości porównywalnych jak wiek czy, wykształcenie, został przyjęcty schemat numerowania od 1, co 1 wzwyż, aż do maksymalnej wartości. W przypadku danych nieporównywalnych, jak GRA(gatunek gry), również został przyjęcty schemat numerowania od 1, co 1 wzwyż, gdzie najliczniejszy w odpowiedziach gatunek ma przypisany największy numer.
+Zmienne ciągłe pozostały bez zmian.
+
+* dane.kategoryczne - dane, w których zmienne ciągłe zmieniono na przedziały. 
+
+* dane.binarne - dane, w których zmienne kategoryczne, zostały zamienione na odpowiadający im zbiór kilku zmiennych binarnych.
+
+W dalszej części projektu, zostanie zbadane, czy sposób transformacji danych wpływa na osiągnięte wyniki, a jeśli wpływa to w jaki sposób.
+
+```{r}
+dane$KM[dane$KM=="Kobieta"]<-"K"
+dane$KM[dane$KM!="K"]<-"M"
+dane.liczbowe<-dane
+dane.binarne<-dane
+dane.kategoryczne<-dane
+
+
+
+dane.liczbowe$WIEK[dane.liczbowe$WIEK=="mniej niż 18 lat"]<-1
+dane.liczbowe$WIEK[dane.liczbowe$WIEK=="18-25 lat"]<-2
+dane.liczbowe$WIEK[dane.liczbowe$WIEK=="25-40 lat"]<-3
+dane.liczbowe$WIEK[dane.liczbowe$WIEK=="więcej niż 40 lat"]<-4
+
+dane.liczbowe$EDU[dane.liczbowe$EDU=="Podstawówka"]<-1
+dane.liczbowe$EDU[dane.liczbowe$EDU=="Szkoła średnia"]<-2
+dane.liczbowe$EDU[dane.liczbowe$EDU=="Studia licencjackie/inżynierskie"]<-3
+dane.liczbowe$EDU[dane.liczbowe$EDU=="Studia magisterskie"]<-4
+dane.liczbowe$EDU[dane.liczbowe$EDU=="Studia doktoranckie"]<-5
+
+dane.liczbowe$STPR[dane.liczbowe$STPR=="Studiuję/Uczę się"]<-1
+dane.liczbowe$STPR[dane.liczbowe$STPR=="Pracuję"]<-2
+dane.liczbowe$STPR[dane.liczbowe$STPR=="Pracuję, Studiuję/Uczę się"]<-3
+
+dane.liczbowe$GRA[dane.liczbowe$GRA=="Inne"]<-1
+dane.liczbowe$GRA[dane.liczbowe$GRA=="SPORTOWE"]<-2
+dane.liczbowe$GRA[dane.liczbowe$GRA=="BATTLE ROYAL"]<-3
+dane.liczbowe$GRA[dane.liczbowe$GRA=="STRATEGIE"]<-4
+dane.liczbowe$GRA[dane.liczbowe$GRA=="FPS"]<-5
+dane.liczbowe$GRA[dane.liczbowe$GRA=="RPG"]<-6
+dane.liczbowe$GRA[dane.liczbowe$GRA=="MOBA"]<-7
+dane.liczbowe$GRA[dane.liczbowe$GRA=="MMORPG"]<-8
+
+dane.liczbowe$PCS[dane.liczbowe$PCS=="Tablet lub smartfon"]<-1
+dane.liczbowe$PCS[dane.liczbowe$PCS=="Konsola"]<-2
+dane.liczbowe$PCS[dane.liczbowe$PCS=="PC lub laptop"]<-3
+
+##############################################################
+
+dane.binarne$W18[dane.binarne$WIEK=="mniej niż 18 lat"]<-1
+dane.binarne$W18[dane.binarne$WIEK!="mniej niż 18 lat"]<-0
+dane.binarne$W18_25[dane.binarne$WIEK=="18-25 lat"]<-1
+dane.binarne$W18_25[dane.binarne$WIEK!="18-25 lat"]<-0
+dane.binarne$W25_40[dane.binarne$WIEK=="25-40 lat"]<-1
+dane.binarne$W25_40[dane.binarne$WIEK!="25-40 lat"]<-0
+dane.binarne$W40[dane.binarne$WIEK=="więcej niż 40 lat"]<-1
+dane.binarne$W40[dane.binarne$WIEK!="więcej niż 40 lat"]<-0
+
+dane.binarne$PODST[dane.binarne$EDU=="Podstawówka"]<-1
+dane.binarne$PODST[dane.binarne$EDU!="Podstawówka"]<-0
+dane.binarne$LIC[dane.binarne$EDU=="Szkoła średnia"]<-1
+dane.binarne$LIC[dane.binarne$EDU!="Szkoła średnia"]<-0
+dane.binarne$INZ[dane.binarne$EDU=="Studia licencjackie/inżynierskie"]<-1
+dane.binarne$INZ[dane.binarne$EDU!="Studia licencjackie/inżynierskie"]<-0
+dane.binarne$MGR[dane.binarne$EDU=="Studia magisterskie"]<-1
+dane.binarne$MGR[dane.binarne$EDU!="Studia magisterskie"]<-0
+dane.binarne$DR[dane.binarne$EDU=="Studia doktoranckie"]<-1
+dane.binarne$DR[dane.binarne$EDU!="Studia doktoranckie"]<-0
+
+dane.binarne$ST[dane.binarne$STPR=="Studiuję/Uczę się"]<-1
+dane.binarne$ST[dane.binarne$STPR!="Studiuję/Uczę się"]<-0
+dane.binarne$PR[dane.binarne$STPR=="Pracuję"]<-1
+dane.binarne$PR[dane.binarne$STPR!="Pracuję"]<-0
+dane.binarne$ST_PR[dane.binarne$STPR=="Pracuję, Studiuję/Uczę się"]<-1
+dane.binarne$ST_PR[dane.binarne$STPR!="Pracuję, Studiuję/Uczę się"]<-0
+
+dane.binarne$Inne[dane.binarne$GRA=="Inne"]<-1
+dane.binarne$Inne[dane.binarne$GRA!="Inne"]<-0
+dane.binarne$Sport[dane.binarne$GRA=="SPORTOWE"]<-1
+dane.binarne$Sport[dane.binarne$GRA!="SPORTOWE"]<-0
+dane.binarne$BaRoy[dane.binarne$GRA=="BATTLE ROYAL"]<-1
+dane.binarne$BaRoy[dane.binarne$GRA!="BATTLE ROYAL"]<-0
+dane.binarne$Strat[dane.binarne$GRA=="STRATEGIE"]<-1
+dane.binarne$Strat[dane.binarne$GRA!="STRATEGIE"]<-0
+dane.binarne$FPS[dane.binarne$GRA=="FPS"]<-1
+dane.binarne$FPS[dane.binarne$GRA!="FPS"]<-0
+dane.binarne$RPG[dane.binarne$GRA=="RPG"]<-1
+dane.binarne$RPG[dane.binarne$GRA!="RPG"]<-0
+dane.binarne$MOBA[dane.binarne$GRA=="MOBA"]<-1
+dane.binarne$MOBA[dane.binarne$GRA!="MOBA"]<-0
+dane.binarne$MMORPG[dane.binarne$GRA=="MMORPG"]<-1
+dane.binarne$MMORPG[dane.binarne$GRA!="MMORPG"]<-0
+
+dane.binarne$TS[dane.binarne$PCS=="Tablet lub smartfon"]<-1
+dane.binarne$TS[dane.binarne$PCS!="Tablet lub smartfon"]<-0
+dane.binarne$CON[dane.binarne$PCS=="Konsola"]<-1
+dane.binarne$CON[dane.binarne$PCS!="Konsola"]<-0
+dane.binarne$PC[dane.binarne$PCS=="PC lub laptop"]<-1
+dane.binarne$PC[dane.binarne$PCS!="PC lub laptop"]<-0
+
+dane.binarne<-dane.binarne[c(1,5,6,9:29)]
+
+
+dane.kategoryczne$CZAS<-cut(dane.kategoryczne$CZAS, c(0,10,20,30,40,50,100 ))
+dane.kategoryczne$CZAS[is.na(dane.kategoryczne$CZAS)]<-"(0,10]"
+
+dane.kategoryczne$DOCHOD<-cut(dane.kategoryczne$DOCHOD, c(0,1000,2000,3000,5000,10000,100000 ))
+dane.kategoryczne$DOCHOD[is.na(dane.kategoryczne$DOCHOD)]<-"(0,1e+03]"
+
+dane.kategoryczne$WYDATKI<-cut(dane.kategoryczne$WYDATKI, c(0,100,200,500,1000,2000,5000 ))
+dane.kategoryczne$WYDATKI[is.na(dane.kategoryczne$WYDATKI)]<-"(0,100]"
+```
+
+
+# Przewidywanie płci na podstawie innych zmiennych
+
+## Podział na zbiór testowy i uczący
+
+Przed przystąpieniem do modelowania należy podzielić zbiór, na zbiór testowy oraz uczący. Ponieważ w badanym zbiorze jest 127 obserwacji, zdecydowano, że domyślnym podziałem, będzie podział taki, gdzie zbiór uczący zawiera 95 obserwacji, a zbiór testowy - 32.
+
+Każdy ze zbiorów - dane liczbowe, kategoryczne i binarne, został podzielony w ten sam sposób, aby można było porównac ze sobą wyniki osiągane na tych zbiorach.
+
+Poniżej przedstawiono wykresy, jak statystyki zmieniły się po podziale na zbiory uczące i testowe.
+
+```{r, out.width="150%", fig.width=10}
+set.seed(123)
+index<-sample(127,95)
+
+
+
+dane1<-dane[index,]
+dane2<-dane[-index,]
+
+
+
+
+q1<-ggplot(dane1, aes(x=WIEK,fill=WIEK))+geom_bar()+
+  ggtitle("Wiek zbiór uczący")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+q2<-ggplot(dane2, aes(x=WIEK,fill=WIEK))+geom_bar()+
+  ggtitle("Wiek zbiór testowy")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q1,q2, ncol=2, nrow=1)
+
+
+q1<-ggplot(dane1, aes(x=KM,fill=KM))+geom_bar()+
+  ggtitle("Płeć zbiór uczący")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+q2<-ggplot(dane2, aes(x=KM,fill=KM))+geom_bar()+
+  ggtitle("Płeć zbiór testowy")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q1,q2, ncol=2, nrow=1)
+
+
+
+q3<-ggplot(dane1, aes(x=EDU,fill=EDU))+geom_bar()+
+  ggtitle("Wykształcenie zbiór uczący")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")+theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+
+q4<-ggplot(dane2, aes(x=EDU,fill=EDU))+geom_bar()+
+  ggtitle("Wykształcenie zbiór testowy")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")+theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+
+ggarrange(q3,q4, ncol=2, nrow=1)
+
+q5<-ggplot(dane1, aes(x=STPR,fill=STPR))+geom_bar()+
+  ggtitle("Czy badana osoba pracuje czy studiuje? Zbiór uczący")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+q6<-ggplot(dane2, aes(x=STPR,fill=STPR))+geom_bar()+
+  ggtitle("Czy badana osoba pracuje czy studiuje? Zbiór testowy")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q5,q6, ncol=2, nrow=1)
+
+q7<-ggplot(dane1, aes(x=GRA,fill=GRA))+geom_bar()+
+  ggtitle("Gatunek gry zbiór uczący")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")+theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+
+q6<-ggplot(dane2, aes(x=GRA,fill=GRA))+geom_bar()+
+  ggtitle("Gatunek gry zbiór testowy")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")+theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+
+ggarrange(q7,q6, ncol=2, nrow=1)
+
+q7<-ggplot(dane1, aes(x=PCS,fill=PCS))+geom_bar()+
+  ggtitle("Platforma używana do gry zbiór uczący")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+q8<-ggplot(dane2, aes(x=PCS,fill=PCS))+geom_bar()+
+  ggtitle("Platforma używana do gry zbiór testowy")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none")+
+  xlab("")+ylab("Ilość")
+
+ggarrange(q7,q8, ncol=2, nrow=1)
+
+
+
+
+dane.liczbowe.nsc<-dane.liczbowe
+dane.binarne[c(2,3,4)]<-scale(dane.binarne[c(2,3,4)])
+dane.liczbowe.nsc$WIEK<-as.numeric(dane.liczbowe$WIEK)
+dane.liczbowe.nsc$EDU<-as.numeric(dane.liczbowe$EDU)
+dane.liczbowe.nsc$STPR<-as.numeric(dane.liczbowe$STPR)
+dane.liczbowe.nsc$DOCHOD<-as.numeric(dane.liczbowe$DOCHOD)
+dane.liczbowe.nsc$CZAS<-as.numeric(dane.liczbowe$CZAS)
+dane.liczbowe.nsc$GRA<-as.numeric(dane.liczbowe$GRA)
+dane.liczbowe.nsc$PCS<-as.numeric(dane.liczbowe$PCS)
+
+dane.liczbowe.nsc$WYDATKI<-as.numeric(dane.liczbowe$WYDATKI)
+dane.liczbowe$WIEK<-scale(as.numeric(dane.liczbowe$WIEK))
+dane.liczbowe$EDU<-scale(as.numeric(dane.liczbowe$EDU))
+dane.liczbowe$STPR<-scale(as.numeric(dane.liczbowe$STPR))
+dane.liczbowe$DOCHOD<-scale(as.numeric(dane.liczbowe$DOCHOD))
+dane.liczbowe$CZAS<-scale(as.numeric(dane.liczbowe$CZAS))
+dane.liczbowe$GRA<-scale(as.numeric(dane.liczbowe$GRA))
+dane.liczbowe$PCS<-scale(as.numeric(dane.liczbowe$PCS))
+dane.liczbowe$WYDATKI<-scale(as.numeric(dane.liczbowe$WYDATKI))
+
+
+
+train.liczbowe.nsc<-dane.liczbowe.nsc[index,]
+test.liczbowe.nsc<-dane.liczbowe.nsc[-index,]
+
+
+train.liczbowe<-dane.liczbowe[index,]
+test.liczbowe<-dane.liczbowe[-index,]
+
+
+train.kategoryczne<-dane.kategoryczne[index,]
+test.kategoryczne<-dane.kategoryczne[-index,]
+train.binarne<-dane.binarne[index,]
+test.binarne<-dane.binarne[-index,]
+
+```
+
+Dla danych kategorycznych nie widać większych zmian. Co do zasady próba ucząca i próba testowa są takie same. Wystepuja niewielkie róznice, pomiędzy stosunkiem odpowiedzi. Najbardziej zauważalnymi są różne rozłożenie wyników Gatunków gier, oraz wykształcenia, odpowiednio w zbiorach uczącym i testowym.
+
+W przypadku zmiennych ciągłych
+
+## Zbiór uczący:
+
+```{r}
+q7<-ggplot(dane1, aes(y=CZAS))+geom_boxplot()+
+  ggtitle("CZAS")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Czas w godzinach")
+
+
+q8<-ggplot(dane1, aes(y=DOCHOD))+geom_boxplot()+
+  ggtitle("DOCHÓD")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Zł")
+
+
+q9<-ggplot(dane1, aes(y=WYDATKI))+geom_boxplot()+
+  ggtitle("WYDATKI")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Zł")
+
+ggarrange(q7,q8,q9,ncol = 3, nrow = 1)
+
+
+```
+
+## Zbiór testowy:
+
+```{r}
+
+q7<-ggplot(dane2, aes(y=CZAS))+geom_boxplot()+
+  ggtitle("CZAS")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Czas w godzinach")
+
+
+q8<-ggplot(dane2, aes(y=DOCHOD))+geom_boxplot()+
+  ggtitle("DOCHÓD")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Zł")
+
+
+q9<-ggplot(dane2, aes(y=WYDATKI))+geom_boxplot()+
+  ggtitle("WYDATKI")+
+  theme(plot.title = element_text(hjust=0.5), legend.position = "none", axis.text.x = element_blank())+
+  xlab("")+ylab("Zł")
+
+
+ggarrange(q7,q8,q9,ncol = 3, nrow = 1)
+```
+
+Widać, że dzięki przejściu obserwacji odstającego dochodu do grupy testowej, model ma szanse dobrze się dopasować do zbioru uczącego. Prawdopodobnie gdyby obserwacja odstająca dochodu - 70 000, została uwzględniona w danych uczących, modele mogłyby być mniej dokładne. 
+
+Statystyki dla zmiennych czas i wydatki pozostają względnie takie same międzygrupowo.
+
+
+## Metoda najbliższych sąsiadów
+
+Zaczynając klasyfikację płci na podstawie pozostałych zmiennych, skorzystano z metody k najbliższych sąsiadów. Przetestowane zostały modele dla danych liczbowych oraz binarnych.
+
+Na poniższych wykresach mozna zobaczyć jak kształtowała się dokładność predykcji względem ilości wybieranych sąsiadów.
+
+
+
+```{r}
+
+library(class)
+wyniki<-as.data.frame(seq(1,10,1))
+names(wyniki)<-c("podzial")
+wyniki$dokladnosc.train<-rep(0,10)
+wyniki$dokladnosc.test<-rep(0,10)
+
+for(i in c(1:10)){
+  knn1<-knn(train=train.liczbowe[,-1],
+          test=train.liczbowe[,-1],
+          cl=train.liczbowe[,1],
+          k=i)
+t<-table(knn1, train.liczbowe$KM)
+wyniki$dokladnosc.train[i]<-(t[1,1]+t[2,2])/sum(t)
+
+  knn2<-knn(train=train.liczbowe[,-1],
+          test=test.liczbowe[,-1],
+          cl=train.liczbowe[,1],
+          k=i)
+t<-table(knn2, test.liczbowe$KM)
+wyniki$dokladnosc.test[i]<-(t[1,1]+t[2,2])/sum(t)
+}
+
+ggplot(wyniki, aes(podzial))+
+  geom_line(aes(y=dokladnosc.train, colour="uczący"))+
+  geom_line(aes(y=dokladnosc.test, colour="testowy"))+
+  geom_point(aes(x=podzial,y=dokladnosc.test))+
+  geom_point(aes(x=podzial,y=dokladnosc.train))+
+  scale_x_continuous(breaks = seq(0,10,1))+
+  ylab("Dokładność")+
+  xlab("Ilośc sąsiadów")+
+  ggtitle("Dokładność predykcji względem podziału na grupy")+
+  labs(colour="Zbiór")+
+  theme(plot.title = element_text(hjust=0.5), legend.title = element_text(hjust=0.5))
+names(wyniki)<-c("Podział","Uczące","Testowe")
+library(ggpubr)
+tab_add_title(ggtexttable(round(wyniki,2), theme=ttheme(base_style="mBlue"),rows=NULL),text="Dane liczbowe")
+wyniki.knn.liczbowe<-wyniki[3,]
+```
+
+Jak widać, największą dokładność osiągnięto dla k=5 i k=6 w przypadku dokładności predykcji na zbiorze uczącym (z pominięciem k=1, dla którego wartość dokładności zawsze wynosi 1). Z kolei na zbiorze testowym, najlepsze okazały się k=3, 4 i 10.
+
+
+Poniżej natomiast, zaprezentowano jak zmiana postaci zmiennych na binarne wpłynie na dokładność predykcyjną modelu.
+
+```{r}
+
+library(class)
+wyniki<-as.data.frame(seq(1,10,1))
+names(wyniki)<-c("podzial")
+wyniki$dokladnosc.train<-rep(0,10)
+wyniki$dokladnosc.test<-rep(0,10)
+
+for(i in c(1:10)){
+  knn1<-knn(train=train.binarne[,-1],
+          test=train.binarne[,-1],
+          cl=train.binarne[,1],
+          k=i)
+t<-table(knn1, train.binarne$KM)
+wyniki$dokladnosc.train[i]<-(t[1,1]+t[2,2])/sum(t)
+
+  knn2<-knn(train=train.binarne[,-1],
+          test=test.binarne[,-1],
+          cl=train.binarne[,1],
+          k=i)
+t<-table(knn2, test.binarne$KM)
+wyniki$dokladnosc.test[i]<-(t[1,1]+t[2,2])/sum(t)
+}
+
+ggplot(wyniki, aes(podzial))+
+  geom_line(aes(y=dokladnosc.train, colour="uczący"))+
+  geom_line(aes(y=dokladnosc.test, colour="testowy"))+
+  geom_point(aes(x=podzial,y=dokladnosc.test))+
+  geom_point(aes(x=podzial,y=dokladnosc.train))+
+  scale_x_continuous(breaks = seq(0,10,1))+
+  ylab("Dokładność")+
+  xlab("Ilośc sąsiadów")+
+  ggtitle("Dokładność predykcji względem podziału na grupy")+
+  labs(colour="Zbiór")+
+  theme(plot.title = element_text(hjust=0.5), legend.title = element_text(hjust=0.5))
+
+library(ggpubr)
+names(wyniki)<-c("Podział","Uczące","Testowe")
+tab_add_title(ggtexttable(round(wyniki,2), theme=ttheme(base_style="mBlue"),rows=NULL),text="Dane binarne")
+wyniki.knn.binarne<-wyniki[8,]
+```
+
+Jak widać, największą dokładność osiągnięto dla k=2 w przypadku dokładności predykcji na zbiorze uczącym. Z kolei na zbiorze testowym, najlepsze okazały się k=8 i k=9. 
+
+Pomimo, że predykcje nie wahają się bardzo przy zmianie ilości sąsiadów, to da się wyróżnić najlepsze wartości.
+
+W dodatku można powiedzieć, że w przypadku metody k najbliższych sąsiadów, lepszym zbiorem okazał się zbiór danych liczbowych, gdyz dla niego uzyskano najlepszą średnią dokładność dla k=3.
+
+Dokładność na zbiorze uczącym była równa 0.81, a na zbiorze testowym 0.72.
+
+Dla poorównania, najlepszy wynik osiągnięty na danych binarnych to dla k=8 dokładnośc na zbiorze uczącym 0.78, a na zbiorze testowym 0.72.
+
+W przypadku nie uwzględniania dopasowania się modelu do danych uczących, wypadają one tak samo. Dla zbioru testowego, udało się poprawnie rozpoznać w 72% czy badana osoba jest mężczyzną czy kobietą.
+
+## Klasyfikator naiwny Bayesa
+
+Następną metodą jest klasyfikator naiwny Bayesa. Zbadano jaką dokładność predykcji można uzyskać używając każdego z 3 zbiorów danych.
+
+```{r, fig.height=2}
+
+library(e1071)
+wyniki<-as.data.frame(c("Kategoryczne","Liczbowe", "Binarne"))
+names(wyniki)<-c("Dane")
+wyniki$dokladnosc.train<-rep(0,3)
+wyniki$dokladnosc.test<-rep(0,3)
+
+
+nb<-naiveBayes(KM~.,data=train.kategoryczne)
+fc<-predict(nb, train.kategoryczne)
+t<-table(fc,train.kategoryczne$KM)
+wyniki$dokladnosc.train[1]<-sum(diag(t))/sum(t)
+
+fc2<-predict(nb,test.kategoryczne)
+t<-table(fc2,test.kategoryczne$KM)
+wyniki$dokladnosc.test[1]<-sum(diag(t))/sum(t)
+
+
+nb<-naiveBayes(KM~.,data=train.liczbowe)
+fc<-predict(nb, train.liczbowe)
+t<-table(fc,train.liczbowe$KM)
+wyniki$dokladnosc.train[2]<-sum(diag(t))/sum(t)
+
+fc2<-predict(nb,test.liczbowe)
+t<-table(fc2,test.liczbowe$KM)
+wyniki$dokladnosc.test[2]<-sum(diag(t))/sum(t)
+
+
+nb<-naiveBayes(KM~.,data=train.binarne)
+fc<-predict(nb, train.binarne)
+t<-table(fc,train.binarne$KM)
+wyniki$dokladnosc.train[3]<-sum(diag(t))/sum(t)
+
+fc2<-predict(nb,test.binarne)
+t<-table(fc2,test.binarne$KM)
+wyniki$dokladnosc.test[3]<-sum(diag(t))/sum(t)
+
+wyniki[c(2,3)]<-round(wyniki[c(2,3)],2)
+names(wyniki)<-c("Dane","Uczące","Testowe")
+
+tab_add_title(ggtexttable(wyniki, theme=ttheme(base_style="mBlue"),rows=NULL),text="Klasyfikator naiwny bayesa")
+
+wyniki.bayes<-wyniki[1,]
+
+```
+Co ciekawe klasyfikator Bayessa wydaje się o wiele gorzej działać dla zmiennych binarnych niż pozostałe metody. Zdecydowanie najlepsze dane to dane kategoryczne. Wynik taki był pożądany, ze względu na to, że w naiwnym klasyfikatorze Bayesa powinny być wykorzystywane własnie dane kategoryczne.
+
+Ogólne dopasowanie do zbioru testowego jest słabsze niż w przypadku metody k najbliższych sąsiadów. 
+
+Metoda naiwnego klasyfikatora Bayessa poprawnie sklasyfikowała płeć 69% badanych osób ze zbioru testowego.
+
+## Liniowa analiza dyskryminacji
+
+Za pomocą liniowej analizy dyskryminacji, opierjącej się na maksymalizacji odleglosci między srednimi w grupach, przy jednoczesnej minimalizacji wewnątrzgrupowej wariancji, zostaną teraz wyznaczone predykcje dotyczące płci badanych osób.
+
+W tej metodzie wykorzystane zostana dane binarne oraz liczbowe. Wyniki można zobaczyć w tabeli.
+
+```{r, fig.height=2}
+library(MASS)
+
+wyniki<-as.data.frame(c("Liczbowe", "Binarne"))
+names(wyniki)<-c("Dane")
+wyniki$dokladnosc.train<-rep(0,2)
+wyniki$dokladnosc.test<-rep(0,2)
+
+
+logr<-lda(KM~.,data=train.liczbowe)
+predict<-MASS:::predict.lda(logr, train.liczbowe)$class
+t<-table(predict,train.liczbowe$KM)
+wyniki$dokladnosc.train[1]<-sum(diag(t))/sum(t)
+
+logr<-lda(KM~.,data=train.liczbowe)
+predict<-MASS:::predict.lda(logr, test.liczbowe)$class
+t<-table(predict,test.liczbowe$KM)
+wyniki$dokladnosc.test[1]<-sum(diag(t))/sum(t)
+
+logr<-lda(KM~.,data=train.binarne)
+predict<-MASS:::predict.lda(logr, train.binarne)$class
+t<-table(predict,train.binarne$KM)
+wyniki$dokladnosc.train[2]<-sum(diag(t))/sum(t)
+
+logr<-lda(KM~.,data=train.binarne)
+predict<-MASS:::predict.lda(logr, test.binarne)$class
+t<-table(predict,test.binarne$KM)
+wyniki$dokladnosc.test[2]<-sum(diag(t))/sum(t)
+
+wyniki[c(2,3)]<-round(wyniki[c(2,3)],2)
+names(wyniki)<-c("Dane","Uczące","Testowe")
+
+tab_add_title(ggtexttable(wyniki, theme=ttheme(base_style="mBlue"),rows=NULL),text="LDA")
+
+wyniki.lda<-wyniki[1,]
+
+```
+
+W przypadku LDA, dopasowanie do zbioru testowego nadal nie przekroczyło poziomu 72%, nie ma więc poprawy w stosunku do metody k najbliższych sąsiadów. Warto równiez zauważyć, że i w tej metodzie dane binarne dają mniejszą dokładność niż dane liczbowe.
+
+## Regresja logistyczna
+
+Ostatnią z testowanych metod predykcji, jest regresja logistyczna. W jej przypadku również wykorzystane zostaną dane binarne i liczbowe. Aby użyć regresji logistycznej jednak, trzeba najpierw zmienić wartości zmiennej KM z mężczyzny i kobiety (M lub K) na wartości liczbowe 0 i 1. 
+
+Regresja logistyczna dopasuje wtedy prawdopodobienstwo bycia przez daną osobę mężczyzną lub kobietą na podstawie wartości prawdopodobieństw zbliżonych do 0 lub 1.
+
+Zdecydowaną wada tej metody, jest możliwość wykroczenia wartościami prawdopodobieństw poza zakres [0,1]. Można zobaczyć to na wykresie poniżej.
+
+```{r}
+library(MASS)
+
+wyniki<-as.data.frame(c("Liczbowe", "Binarne"))
+names(wyniki)<-c("Dane")
+wyniki$dokladnosc.train<-rep(0,2)
+wyniki$dokladnosc.test<-rep(0,2)
+
+train.liczbowe$KM[train.liczbowe$KM=="K"]<-1
+train.liczbowe$KM[train.liczbowe$KM=="M"]<-0
+test.liczbowe$KM[test.liczbowe$KM=="K"]<-1
+test.liczbowe$KM[test.liczbowe$KM=="M"]<-0
+test.liczbowe$KM<-as.numeric(test.liczbowe$KM)
+train.liczbowe$KM<-as.numeric(train.liczbowe$KM)
+
+train.binarne$KM[train.binarne$KM=="K"]<-1
+train.binarne$KM[train.binarne$KM=="M"]<-0
+test.binarne$KM[test.binarne$KM=="K"]<-1
+test.binarne$KM[test.binarne$KM=="M"]<-0
+test.binarne$KM<-as.numeric(test.binarne$KM)
+train.binarne$KM<-as.numeric(train.binarne$KM)
+
+logr<-glm(KM~.,data=train.liczbowe)
+predict<-predict(logr, train.liczbowe, type="response")
+predicted.classes <- ifelse(predict > 0.5, 1, 0)
+wyniki$dokladnosc.train[1]<-mean(predicted.classes == train.liczbowe$KM)
+
+predict<-as.data.frame(predict)
+predict$over<- predict$predict<0
+ggplot(predict, aes(x=c(1),y=predict, color=as.factor(over)))+geom_point()+
+  ylab("Prawdopodobieństwo")+
+  xlab("")+
+  theme(axis.text.x = element_blank())+
+  ggtitle("Prawdopodobieństwo bycia kobietą")+
+  geom_hline(yintercept = 0.5, colour="blue", linetype="longdash")+
+  geom_hline(yintercept = 0.0, colour="red")+
+  scale_color_manual(values = c("darkgreen", "red"))+
+  theme(legend.position = "none")
+
+
+logr<-glm(KM~.,data=train.liczbowe)
+predict<-predict(logr, test.liczbowe, type="response")
+predicted.classes <- ifelse(predict > 0.5, 1, 0)
+wyniki$dokladnosc.test[1]<-mean(predicted.classes == test.liczbowe$KM)
+
+logr<-glm(KM~.,data=train.binarne)
+predict<-predict(logr, train.binarne, type="response")
+predicted.classes <- ifelse(predict > 0.5, 1, 0)
+wyniki$dokladnosc.train[2]<-mean(predicted.classes == train.binarne$KM)
+
+
+logr<-glm(KM~.,data=train.binarne)
+predict<-predict(logr, test.binarne, type="response")
+predicted.classes <- ifelse(predict > 0.5, 1, 0)
+wyniki$dokladnosc.test[2]<-mean(predicted.classes == test.binarne$KM)
+```
+
+Wyniki dokładności predykcji można zobaczyć w poniższej tabeli
+
+```{r, fig.height=2}
+
+wyniki[c(2,3)]<-round(wyniki[c(2,3)],2)
+names(wyniki)<-c("Dane","Uczące","Testowe")
+
+tab_add_title(ggtexttable(wyniki, theme=ttheme(base_style="mBlue"),rows=NULL),text="Regresja logistyczna")
+
+wyniki.log<-wyniki[1,]
+
+```
+Regresja logistyczna również dała maksymalne dopasowanie predykcji równe 72%. A co za tym idzie, przy pomocy regresji logistycznej prawidłowo ze zbioru testowego udało sie poprawnie sklasyfikowac płeć 72% osób badanych.
+
+# Podsumowanie
+
+```{r, fig.width=11, fig.height=3}
+
+
+wyniki<-as.data.frame(c("Regresja logistyczna", "Analiza dyskryminacyjna", "Metoda k najbliższych sąsiadów(k=3)", "Klasyfikator naiwny Bayesa"))
+wyniki$dokladnosc.train<-rep(0,4)
+wyniki$dokladnosc.test<-rep(0,4)
+names(wyniki)<-c("Metoda", "Dokładność na zbiorze uczącym", "Dokładność na zbiorze testowym")
+wyniki[1,2]<-wyniki.log[1,2]
+wyniki[1,3]<-wyniki.log[1,3]
+wyniki[2,2]<-wyniki.lda[1,2]
+wyniki[2,3]<-wyniki.lda[1,3]
+wyniki[3,2]<-wyniki.knn.liczbowe[1,2]
+wyniki[3,3]<-wyniki.knn.liczbowe[1,3]
+wyniki[4,2]<-wyniki.bayes[1,2]
+wyniki[4,3]<-wyniki.bayes[1,3]
+wyniki[c(2,3)]<-round(wyniki[c(2,3)],2)
+
+tab_add_title(ggtexttable(wyniki, theme=ttheme(base_style="mBlue"),rows=NULL),text="Porównanie wyników")
+```
+Najlepszą z metod okazała się metoda k najbliższych sąsiadów. dla niej łączne dopasowanie do zbiorów testowego i uczącego jest najlepsze. Biorąc pod uwagę jedynie dokładnośc na zbiorze testowym, wraz z tą metodą najlepsze są metoda regresji logistycznej i analizy dyskryminacyjnej.
+
+Należy także pamiętać, że w zbiorze testowym jest też jedna wartośc odstająca, Kobieta o wysokim dochodzie i wysokich dodatkach klasyfikowana jako mężczyzne przez wszystkie z modeli. Realnie więc dokładność na zbiorze testowym jest nieco wyższa.
+
+Podsumowując, najlepszym uzyskanym wynikiem, jest dokładnośc rozpoznawanie płci badanych na poziomie 72%. Wynik ten daje o 22% większe szanse na prawidłowe rozpoznanie płci niż metoda losowa. 
